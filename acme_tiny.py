@@ -30,7 +30,7 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
-def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA):
+def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, contact=None):
     # helper function base64 encode for jose spec
     def _b64(b):
         return base64.urlsafe_b64encode(b).decode('utf8').replace("=", "")
@@ -96,12 +96,16 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA):
             if san.startswith("DNS:"):
                 domains.add(san[4:])
 
-    # get the certificate domains and expiration
+    # register the account (or, if already registered, simply update the contact infos)
     log.info("Registering account...")
-    code, result = _send_signed_request(CA + "/acme/new-reg", {
+    payload = {
         "resource": "new-reg",
         "agreement": json.loads(urlopen(CA + "/directory").read().decode('utf8'))['meta']['terms-of-service'],
-    })
+    }
+    if contact is not None:
+        payload["contact"] = [ "mailto:" + contact ]
+
+    code, result = _send_signed_request(CA + "/acme/new-reg", payload)
     if code == 201:
         log.info("Registered!")
     elif code == 409:
@@ -221,10 +225,11 @@ def main(argv):
     parser.add_argument("--quiet", action="store_const", const=logging.ERROR, help="suppress output except for errors")
     parser.add_argument("--skip", action="store_true", help="skip checking for DNS records")
     parser.add_argument("--ca", default=DEFAULT_CA, help="certificate authority, default is Let's Encrypt")
+    parser.add_argument("--contact", help="an optional email address to receive expiration alerts from Let's Encrypt")
 
     args = parser.parse_args(argv)
     LOGGER.setLevel(args.quiet or LOGGER.level)
-    signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=args.ca)
+    signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=args.ca, contact=args.contact)
     sys.stdout.write(signed_crt)
 
 if __name__ == "__main__": # pragma: no cover
