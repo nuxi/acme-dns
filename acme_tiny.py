@@ -212,11 +212,6 @@ def main(argv):
             ===Example Usage===
             python acme_tiny.py --account-key ./account.key --csr ./domain.csr > signed.crt
             ===================
-
-            ===Example Crontab Renewal (once per month)===
-            XXX NEEDS DYNAMIC DNS UPDATE CONTROL TO WORK
-            0 0 1 * * python /path/to/acme_tiny.py --account-key /path/to/account.key --csr /path/to/domain.csr > /path/to/signed.crt 2>> /var/log/acme_tiny.log
-            ==============================================
             """)
     )
     parser.add_argument("--account-key", required=True, help="path to your Let's Encrypt account private key")
