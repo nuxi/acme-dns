@@ -38,7 +38,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA):
     # parse account key to get public key
     log.info("Parsing account key...")
     proc = subprocess.Popen(["openssl", "rsa", "-in", account_key, "-noout", "-text"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
     out, err = proc.communicate()
     if proc.returncode != 0:
         raise IOError("OpenSSL Error: {0}".format(err))
@@ -65,7 +65,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA):
         protected["nonce"] = urlopen(CA + "/directory").headers['Replay-Nonce']
         protected64 = _b64(json.dumps(protected).encode('utf8'))
         proc = subprocess.Popen(["openssl", "dgst", "-sha256", "-sign", account_key],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
         out, err = proc.communicate("{0}.{1}".format(protected64, payload64).encode('utf8'))
         if proc.returncode != 0:
             raise IOError("OpenSSL Error: {0}".format(err))
@@ -82,7 +82,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA):
     # find domains
     log.info("Parsing CSR...")
     proc = subprocess.Popen(["openssl", "req", "-in", csr, "-noout", "-text"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdin=open(os.devnull, 'r'), stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
     out, err = proc.communicate()
     if proc.returncode != 0:
         raise IOError("Error loading {0}: {1}".format(csr, err))
@@ -186,8 +186,10 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA):
     # get the new certificate
     log.info("Signing certificate...")
     proc = subprocess.Popen(["openssl", "req", "-in", csr, "-outform", "DER"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdin=open(os.devnull, 'r'), stdout=subprocess.PIPE, stderr=subprocess.PIPE, close_fds=True)
     csr_der, err = proc.communicate()
+    if proc.returncode != 0:
+        raise IOError("OpenSSL Error: {0}".format(err))
     code, result = _send_signed_request(CA + "/acme/new-cert", {
         "resource": "new-cert",
         "csr": _b64(csr_der),
