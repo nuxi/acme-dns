@@ -199,6 +199,8 @@ def main(argv=None):
             the ACME protocol. It will need to be run on your server and have access to your private
             account key, so PLEASE READ THROUGH IT! It's only ~200 lines, so it won't take long.
 
+            This version has been modified from the original to use DNS challenge instead of HTTP
+
             Example Usage:
             python acme_tiny.py --account-key ./account.key --csr ./domain.csr > signed_chain.crt
             """)
