@@ -6,6 +6,8 @@ import socket
 import dns.message
 import dns.query
 import dns.resolver
+import dns.update
+import dns.tsigkeyring
 
 try:
     from urllib.request import urlopen, Request # Python 3
@@ -19,7 +21,8 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
-def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, contact=None):
+def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, contact=None,
+            dns_zone_update_server=None, dns_zone_keyring=None, dns_zone=None, dns_update_algo=None):
     directory, acct_headers, alg, jwk = None, None, None, None # global variables
 
     # helper functions - base64 encode for jose spec
@@ -139,16 +142,33 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
         keyauthorization = "{0}.{1}".format(token, thumbprint)
         record = _b64(hashlib.sha256(keyauthorization).digest())
         log.info('_acme-challenge.%s. 300 IN TXT %s' % (domain, record))
-        pending[domain] = (challenge, token, keyauthorization, record)
+        zone = '_acme-challenge.'+domain
+        if dns_zone:
+            zone = dns_zone
+            if isinstance(dns_zone, int):
+                zone = '.'.join(('_acme-challenge.' + domain).split('.')[dns_zone:])
+        pending[domain] = (challenge, token, keyauthorization, record, zone)
 
-    log.info('Press enter to continue after updating DNS server')
-    raw_input()
+    if not dns_zone_update_server:
+        log.info('Press enter to continue after updating DNS server')
+        raw_input()
+    else:
+        log.debug('Performing DNS Zone Updates...')
+        for domain in pending.keys():
+            record = pending[domain][3]
+            zone = pending[domain][4]
+            log.debug('Updating TXT record {0} in DNS zone {1}'.format('_acme-challenge.'+domain,zone))
+            update = dns.update.Update(zone, keyring=dns_zone_keyring, keyalgorithm=dns_update_algo)
+            update.replace('_acme-challenge.'+domain+'.', 0, 'TXT', str(record))
+            response = dns.query.tcp(update, dns_zone_update_server, timeout=10)
+            if response.rcode() != 0:
+                raise Exception("DNS zone update failed, aborting, query was: {0}".format(response))
 
     # verify each domain
     for domain in pending.keys():
         log.info("Verifying {0} part 2...".format(domain))
 
-        challenge, token, keyauthorization, record = pending[domain]
+        challenge, token, keyauthorization, record, zone = pending[domain]
 
         if not skip_check:
             # check that the file is in place
@@ -189,6 +209,19 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
     # download the certificate
     certificate_pem, _, _ = _do_request(order['certificate'], err_msg="Certificate download failed")
     log.info("Certificate signed!")
+
+    if not dns_zone_update_server:
+        log.debug("You can now remove the _acme-challenge records from your DNS zone.")
+    else:
+        log.debug('Removing DNS records added for ACME challange...')
+        for domain in pending.keys():
+            record = pending[domain][3]
+            zone = pending[domain][4]
+            log.debug('Removing TXT record {0} in DNS zone {1}'.format('_acme-challenge.'+domain,zone))
+            update = dns.update.Update(zone, keyring=dns_zone_keyring, keyalgorithm=dns_update_algo)
+            update.delete('_acme-challenge.'+domain+'.', 'TXT')
+            response = dns.query.tcp(update, dns_zone_update_server, timeout=10)
+
     return certificate_pem
 
 def main(argv=None):
@@ -211,10 +244,28 @@ def main(argv=None):
     parser.add_argument("--skip", action="store_true", help="skip checking for DNS records")
     parser.add_argument("--ca", default=DEFAULT_CA, help="certificate authority, default is Let's Encrypt")
     parser.add_argument("--contact", help="an optional email address to receive expiration alerts from Let's Encrypt")
+    parser.add_argument("--dns-zone-update", metavar='DNS_SERVER', help="optionally automatically provision TXT record for challange on the DNS Server specified by this option using DNS zone updates")
+    parser.add_argument("--dns-zone-key", nargs=3, metavar=('KEY_NAME','SECRET','ALGORITHM'), help="optional. if --dns-zone-update is used, the key name, secret and algorithm for the TSIG key which may be used to authenticate the DNS zone updates")
+    parser.add_argument("--dns-zone", help="optional. if --dns-zone-update is used, specifies in which dns zone the dns zone update should be made. Per default, the challange domain (_acme-challenge.your.domain) is assumed have it's own zone. A number can be specified if a parent domain of the challange domain is the dns zone to change. Alternatively, the name of the dns zone may be explicitly specified.")
 
     args = parser.parse_args(argv)
+
+    if not args.dns_zone_update and (args.dns_zone_key or args.dns_zone):
+      ArgumentParser.error("--dns-zone and --dns-zone-key can only be used together with --dns-zone-update")
+
+    dns_update_algo = None
+    dns_zone_keyring = None
+    if args.dns_zone_key:
+      dns_zone_keyring = dns.tsigkeyring.from_text({args.dns_zone_key[0]:args.dns_zone_key[1]})
+      dns_update_algo = args.dns_zone_key[2]
+
+    if args.dns_zone and args.dns_zone.isdigit():
+      args.dns_zone = int(args.dns_zone)
+
     LOGGER.setLevel(args.quiet or LOGGER.level)
-    signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=args.ca, contact=args.contact)
+    signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=args.ca, contact=args.contact,
+                         dns_zone_update_server=args.dns_zone_update, dns_zone_keyring=dns_zone_keyring, dns_zone=args.dns_zone,
+                         dns_update_algo=dns_update_algo)
     sys.stdout.write(signed_crt)
 
 if __name__ == "__main__": # pragma: no cover
