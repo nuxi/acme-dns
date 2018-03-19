@@ -59,7 +59,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
         protected.update({"jwk": jwk} if acct_headers is None else {"kid": acct_headers['Location']})
         protected64 = _b64(json.dumps(protected).encode('utf8'))
         protected_input = "{0}.{1}".format(protected64, payload64).encode('utf8')
-        out = _cmd(["openssl", "dgst", "-sha256", "-sign", account_key], stdin=subprocess.PIPE, cmd_input=protected_input, err_msg="OpenSSL Error")
+        out = _cmd(["openssl", "dgst", "-sha256", "-sign", account_key], cmd_input=protected_input, err_msg="OpenSSL Error")
         data = json.dumps({"protected": protected64, "payload": payload64, "signature": _b64(out)})
         try:
             return _do_request(url, data=data.encode('utf8'), err_msg=err_msg, depth=depth)
