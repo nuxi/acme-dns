@@ -230,7 +230,7 @@ def main(argv=None):
         description=textwrap.dedent("""\
             This script automates the process of getting a signed TLS certificate from Let's Encrypt using
             the ACME protocol. It will need to be run on your server and have access to your private
-            account key, so PLEASE READ THROUGH IT! It's only ~200 lines, so it won't take long.
+            account key, so PLEASE READ THROUGH IT! It's only ~300 lines, so it won't take long.
 
             This version has been modified from the original to use DNS challenge instead of HTTP
 
