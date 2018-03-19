@@ -6,7 +6,7 @@ to be run on your server and have access to your private Let's Encrypt account
 key, I tried to make it as tiny as possible (currently less than 200 lines).
 The only prerequisites are python and openssl.
 
-**PLEASE READ THE SOURCE CODE! YOU MUST TRUST IT WITH YOUR PRIVATE KEYS!**
+**PLEASE READ THE SOURCE CODE! YOU MUST TRUST IT WITH YOUR PRIVATE ACCOUNT KEY!**
 
 This is a fork of the [original acme-tiny](https://github.com/diafygi/acme-tiny)
 converted to use dns-01 instead of http-01 for verification.
@@ -30,7 +30,7 @@ with the corresponding private key. If you don't understand what I just said,
 this script likely isn't for you! Please use the official Let's Encrypt
 [client](https://github.com/letsencrypt/letsencrypt).
 To accomplish this you need to initially create a key, that can be used by
-acme-tiny, to register a account for you and sign all following requests.
+acme-tiny, to register an account for you and sign all following requests.
 
 ```sh
 openssl genrsa 4096 > account.key
@@ -67,17 +67,17 @@ to it, even for renewals. You can use the same CSR for multiple renewals. NOTE:
 you can't use your account private key as your domain private key!
 
 ```sh
-# generate a domain private key (if you haven't already)
+# Generate a domain private key (if you haven't already)
 openssl genrsa 2048 > domain.key
 ```
 
 ```sh
-# for a single domain
+# For a single domain
 openssl req -new -sha256 -key domain.key -subj "/CN=yoursite.com" > domain.csr
 ```
 
 ```sh
-# for multiple domains (use this one if you want both www.yoursite.com and yoursite.com)
+# For multiple domains (use this one if you want both www.yoursite.com and yoursite.com)
 # note: openssl makes adding SANs painful....
 openssl req -new -sha256 -key domain.key -subj "/" -reqexts SAN -config <(cat /etc/ssl/openssl.cnf <(printf "[SAN]\nsubjectAltName=DNS:yoursite.com,DNS:www.yoursite.com")) > domain.csr
 ```
@@ -89,8 +89,8 @@ script on your server with the permissions needed to write to the above folder
 and read your private account key and CSR.
 
 ```sh
-# run the script on your server
-python acme_tiny.py --account-key ./account.key --csr ./domain.csr > ./signed.crt
+# Run the script on your server
+python acme_tiny.py --account-key ./account.key --csr ./domain.csr > ./signed_chain.crt
 ```
 
 The script will output the necessary DNS records and wait for you to confirm that
@@ -101,14 +101,12 @@ that check
 
 ### Step 4: Install the certificate
 
-The signed https certificate that is output by this script can be used along
+The signed https certificate chain that is output by this script can be used along
 with your private key to run an https server. You need to include them in the
 https settings in your web server's configuration.
 
-```sh
-# you will probably need the LE intermediate certificate
-wget -O intermediate.pem https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem
-```
+The tool will output your server certificate followed by the LE intermediate certificatte.
+Some programs take them together other programs take them in a combined file.
 
 ## Feedback/Contributing
 
