@@ -147,7 +147,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
             zone = dns_zone
             if isinstance(dns_zone, int):
                 zone = '.'.join(('_acme-challenge.' + domain).split('.')[dns_zone:])
-        pending[domain] = (challenge, token, keyauthorization, record, zone)
+        pending[domain] = (challenge, token, keyauthorization, record, zone, auth_url)
 
     if not dns_zone_update_server:
         log.info('Press enter to continue after updating DNS server')
@@ -168,7 +168,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
     for domain in pending.keys():
         log.info("Verifying {0} part 2...".format(domain))
 
-        challenge, token, keyauthorization, record, zone = pending[domain]
+        challenge, token, keyauthorization, record, zone, auth_url = pending[domain]
 
         if not skip_check:
             # check that the file is in place
