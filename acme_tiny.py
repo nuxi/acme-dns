@@ -141,7 +141,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
         token = re.sub(r"[^A-Za-z0-9_\-]", "_", challenge['token'])
         keyauthorization = "{0}.{1}".format(token, thumbprint)
         record = _b64(hashlib.sha256(keyauthorization).digest())
-        log.info('_acme-challenge.%s. 300 IN TXT %s' % (domain, record))
+        log.info('_acme-challenge.%s. 60 IN TXT %s' % (domain, record))
         zone = '_acme-challenge.'+domain
         if dns_zone:
             zone = dns_zone
@@ -159,7 +159,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
             zone = pending[domain][4]
             log.debug('Updating TXT record {0} in DNS zone {1}'.format('_acme-challenge.'+domain,zone))
             update = dns.update.Update(zone, keyring=dns_zone_keyring, keyalgorithm=dns_update_algo)
-            update.replace('_acme-challenge.'+domain+'.', 0, 'TXT', str(record))
+            update.replace('_acme-challenge.'+domain+'.', 60, 'TXT', str(record))
             response = dns.query.tcp(update, dns_zone_update_server, timeout=10)
             if response.rcode() != 0:
                 raise Exception("DNS zone update failed, aborting, query was: {0}".format(response))
