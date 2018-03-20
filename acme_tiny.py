@@ -174,8 +174,8 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
             # check that the file is in place
             addr = set()
             for x in dns.resolver.query(dns.resolver.zone_for_name(domain), 'NS'):
-                addr = addr.union(map(str, dns.resolver.query(str(x), 'A')))
-                addr = addr.union(map(str, dns.resolver.query(str(x), 'AAAA')))
+                addr = addr.union(map(str, dns.resolver.query(str(x), 'A', raise_on_no_answer=False)))
+                addr = addr.union(map(str, dns.resolver.query(str(x), 'AAAA', raise_on_no_answer=False)))
 
             for x in addr:
                 req = dns.message.make_query('_acme-challenge.%s' % domain, 'TXT')
