@@ -14,14 +14,14 @@ try:
 except ImportError:
     from urllib2 import urlopen, Request # Python 2
 
-#DEFAULT_CA = "https://acme-staging-v02.api.letsencrypt.org/directory"
-DEFAULT_CA = "https://acme-v02.api.letsencrypt.org/directory"
+TEST_CA = "https://acme-staging-v02.api.letsencrypt.org/directory"
+PROD_CA = "https://acme-v02.api.letsencrypt.org/directory"
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
-def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, contact=None,
+def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=None,
             dns_zone_update_server=None, dns_zone_keyring=None, dns_zone=None, dns_update_algo=None):
     directory, acct_headers, alg, jwk = None, None, None, None # global variables
 
@@ -240,7 +240,7 @@ def main(argv=None):
     parser.add_argument("--csr", required=True, help="path to your certificate signing request")
     parser.add_argument("--quiet", action="store_const", const=logging.ERROR, help="suppress output except for errors")
     parser.add_argument("--skip", action="store_true", help="skip checking for DNS records")
-    parser.add_argument("--ca", default=DEFAULT_CA, help="certificate authority, default is Let's Encrypt")
+    parser.add_argument("--ca", default=PROD_CA, help="certificate authority, default is Let's Encrypt Production")
     parser.add_argument("--contact", help="an optional email address to receive expiration alerts from Let's Encrypt")
     parser.add_argument("--dns-zone-update", metavar='DNS_SERVER', help="optionally automatically provision TXT record for challange on the DNS Server specified by this option using DNS zone updates")
     parser.add_argument("--dns-zone-key", nargs=3, metavar=('KEY_NAME','SECRET','ALGORITHM'), help="optional. if --dns-zone-update is used, the key name, secret and algorithm for the TSIG key which may be used to authenticate the DNS zone updates")
@@ -261,7 +261,18 @@ def main(argv=None):
       args.dns_zone = int(args.dns_zone)
 
     LOGGER.setLevel(args.quiet or LOGGER.level)
-    signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=args.ca, contact=args.contact,
+
+    if args.ca.upper() in ('PRODUCTION', 'PROD', 'DEFAULT') or args.ca == PROD_CA:
+        ca = PROD_CA
+        LOGGER.info("Using Let's Encrypt production CA: {0}".format(ca))
+    elif args.ca.upper() in ('TEST', 'STAGING', 'DEVEL') or args.ca == TEST_CA:
+        ca = TEST_CA
+        LOGGER.info("Using Let's Encrypt staging CA: {0}".format(ca))
+    else:
+        ca = args.ca
+        LOGGER.info("Using other CA: {0}".format(ca))
+
+    signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=ca, contact=args.contact,
                          dns_zone_update_server=args.dns_zone_update, dns_zone_keyring=dns_zone_keyring, dns_zone=args.dns_zone,
                          dns_update_algo=dns_update_algo)
     sys.stdout.write(signed_crt)
