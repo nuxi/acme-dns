@@ -128,7 +128,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
     order, _, order_headers = _send_signed_request(directory['newOrder'], order_payload, "Error creating new order")
     log.info("Order created!")
 
-    pending = {}
+    pending = []
 
     # get the authorizations that need to be completed
     for auth_url in order['authorizations']:
@@ -147,16 +147,15 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
             zone = dns_zone
             if isinstance(dns_zone, int):
                 zone = '.'.join(('_acme-challenge.' + domain).split('.')[dns_zone:])
-        pending[domain] = (challenge, token, keyauthorization, record, zone, auth_url)
+        pending.append((challenge, domain, keyauthorization, record, zone, auth_url))
 
     if not dns_zone_update_server:
         log.info('Press enter to continue after updating DNS server')
         raw_input()
     else:
         log.debug('Performing DNS Zone Updates...')
-        for domain in pending.keys():
-            record = pending[domain][3]
-            zone = pending[domain][4]
+        for authz in pending:
+            challenge, domain, keyauthorization, record, zone, auth_url = authz
             log.debug('Updating TXT record {0} in DNS zone {1}'.format('_acme-challenge.'+domain,zone))
             update = dns.update.Update(zone, keyring=dns_zone_keyring, keyalgorithm=dns_update_algo)
             update.replace('_acme-challenge.'+domain+'.', 60, 'TXT', str(record))
@@ -165,10 +164,10 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
                 raise Exception("DNS zone update failed, aborting, query was: {0}".format(response))
 
     # verify each domain
-    for domain in pending.keys():
-        log.info("Verifying {0} part 2...".format(domain))
+    for authz in pending:
+        challenge, domain, keyauthorization, record, zone, auth_url = authz
 
-        challenge, token, keyauthorization, record, zone, auth_url = pending[domain]
+        log.info("Verifying {0} part 2...".format(domain))
 
         if not skip_check:
             # check that the file is in place
@@ -214,9 +213,8 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=DEFAULT_CA, conta
         log.debug("You can now remove the _acme-challenge records from your DNS zone.")
     else:
         log.debug('Removing DNS records added for ACME challange...')
-        for domain in pending.keys():
-            record = pending[domain][3]
-            zone = pending[domain][4]
+        for authz in pending:
+            challenge, domain, keyauthorization, record, zone, auth_url = authz
             log.debug('Removing TXT record {0} in DNS zone {1}'.format('_acme-challenge.'+domain,zone))
             update = dns.update.Update(zone, keyring=dns_zone_keyring, keyalgorithm=dns_update_algo)
             update.delete('_acme-challenge.'+domain+'.', 'TXT')
