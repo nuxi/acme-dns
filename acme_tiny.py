@@ -1,8 +1,13 @@
 #!/usr/bin/env python
 # Copyright Daniel Roesler, under MIT license, see LICENSE at github.com/diafygi/acme-tiny
+from __future__ import print_function
+
 import argparse, subprocess, json, os, sys, base64, binascii, time, hashlib, re, copy, textwrap, logging
 
+import pprint
 import socket
+import traceback
+
 import dns.message
 import dns.query
 import dns.resolver
@@ -51,7 +56,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
         if depth < 100 and code == 400 and json.loads(resp_data)['type'] == "urn:ietf:params:acme:error:badNonce":
             raise IndexError(resp_data) # allow 100 retrys for bad nonces
         if code not in [200, 201, 204]:
-            raise ValueError("{0}:\nUrl: {1}\nData: {2}\nResponse Code: {3}\nResponse: {4}".format(err_msg, url, data, code, resp_data))
+            raise ValueError("{0}:\nUrl: {1}\nResponse Code: {2}\nResponse: {3}".format(err_msg, url, code, resp_data))
         return resp_data, code, headers
 
     # helper function - make signed requests
@@ -134,40 +139,48 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
     for auth_url in order['authorizations']:
         authorization, _, _ = _do_request(auth_url, err_msg="Error getting challenges")
         domain = authorization['identifier']['value']
-        log.info("Verifying {0} part 1...".format(domain))
+        rdomain = '*.{0}'.format(domain) if authorization.get('wildcard', False) else domain
+        if authorization['status'] == 'valid':
+            log.info('Existing authorization for {0} is still valid!'.format(rdomain))
+            continue
+        log.info("Verifying {0} part 1...".format(rdomain))
 
         # find the dns-01 challenge and write the challenge file
         challenge = [c for c in authorization['challenges'] if c['type'] == "dns-01"][0]
         token = re.sub(r"[^A-Za-z0-9_\-]", "_", challenge['token'])
         keyauthorization = "{0}.{1}".format(token, thumbprint)
-        record = _b64(hashlib.sha256(keyauthorization).digest())
+        record = _b64(hashlib.sha256(keyauthorization.encode('utf8')).digest())
         log.info('_acme-challenge.%s. 60 IN TXT %s' % (domain, record))
         zone = '_acme-challenge.'+domain
         if dns_zone:
             zone = dns_zone
             if isinstance(dns_zone, int):
                 zone = '.'.join(('_acme-challenge.' + domain).split('.')[dns_zone:])
-        pending.append((challenge, domain, keyauthorization, record, zone, auth_url))
+        pending.append((auth_url, authorization, challenge, domain, keyauthorization, rdomain, record, token, zone))
 
-    if not dns_zone_update_server:
-        log.info('Press enter to continue after updating DNS server')
-        raw_input()
-    else:
-        log.debug('Performing DNS Zone Updates...')
-        for authz in pending:
-            challenge, domain, keyauthorization, record, zone, auth_url = authz
-            log.debug('Updating TXT record {0} in DNS zone {1}'.format('_acme-challenge.'+domain,zone))
-            update = dns.update.Update(zone, keyring=dns_zone_keyring, keyalgorithm=dns_update_algo)
-            update.replace('_acme-challenge.'+domain+'.', 60, 'TXT', str(record))
-            response = dns.query.tcp(update, dns_zone_update_server, timeout=10)
-            if response.rcode() != 0:
-                raise Exception("DNS zone update failed, aborting, query was: {0}".format(response))
+    if pending:
+        if not dns_zone_update_server:
+            log.info('Press enter to continue after updating DNS server')
+            try:
+                raw_input() # Python 2
+            except NameError:
+                input() # Python 3
+        else:
+            log.debug('Performing DNS Zone Updates...')
+            for authz in pending:
+                auth_url, authorization, challenge, domain, keyauthorization, rdomain, record, token, zone = authz
+                log.debug('Updating TXT record {0} in DNS zone {1}'.format('_acme-challenge.'+domain,zone))
+                update = dns.update.Update(zone, keyring=dns_zone_keyring, keyalgorithm=dns_update_algo)
+                update.replace('_acme-challenge.'+domain+'.', 60, 'TXT', str(record))
+                response = dns.query.tcp(update, dns_zone_update_server, timeout=10)
+                if response.rcode() != 0:
+                    raise Exception("DNS zone update failed, aborting, query was: {0}".format(response))
 
     # verify each domain
     for authz in pending:
-        challenge, domain, keyauthorization, record, zone, auth_url = authz
+        auth_url, authorization, challenge, domain, keyauthorization, rdomain, record, token, zone = authz
 
-        log.info("Verifying {0} part 2...".format(domain))
+        log.info("Verifying {0} part 2...".format(rdomain))
 
         if not skip_check:
             # check that the file is in place
@@ -180,8 +193,10 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
                 req = dns.message.make_query('_acme-challenge.%s' % domain, 'TXT')
                 try:
                     resp = dns.query.udp(req, x, timeout=30)
-                except socket.error, e:
-                    print >>sys.stderr, e
+                except socket.error as e:
+                    log.warn('Exception contacting {0}: {1}'.format(x, e))
+                except dns.exception.DNSException as e:
+                    log.warn('Exception contacting {0}: {1}'.format(x, e))
                 else:
                     for y in resp.answer:
                         txt = map(lambda x: str(x)[1:-1], y)
@@ -189,10 +204,14 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
                             raise ValueError("_acme-challenge.{0} does not contain {1} on nameserver {2}".format(domain, record, x))
 
         # say the challenge is done
-        _send_signed_request(challenge['url'], {}, "Error submitting challenges: {0}".format(domain))
-        authorization = _poll_until_not(auth_url, ["pending"], "Error checking challenge status for {0}".format(domain))
+        _send_signed_request(challenge['url'], {}, "Error submitting challenges: {0}".format(rdomain))
+        authorization = _poll_until_not(auth_url, ["pending"], "Error checking challenge status for {0}".format(rdomain))
         if authorization['status'] != "valid":
-            raise ValueError("Challenge did not pass for {0}: {1}".format(domain, authorization))
+            challenge = [c for c in authorization['challenges'] if c['type'] == "dns-01"][0]
+            if 'error' in challenge:
+                raise ValueError("Challenge did not pass for {0}:\n{1}".format(rdomain, pprint.pformat(challenge['error'])))
+            else:
+                raise ValueError("Challenge did not pass for {0}: Unknown reasons".format(rdomain))
         log.info("{0} verified!".format(domain))
 
     # finalize the order with the csr
@@ -209,16 +228,17 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
     certificate_pem, _, _ = _do_request(order['certificate'], err_msg="Certificate download failed")
     log.info("Certificate signed!")
 
-    if not dns_zone_update_server:
-        log.debug("You can now remove the _acme-challenge records from your DNS zone.")
-    else:
-        log.debug('Removing DNS records added for ACME challange...')
-        for authz in pending:
-            challenge, domain, keyauthorization, record, zone, auth_url = authz
-            log.debug('Removing TXT record {0} in DNS zone {1}'.format('_acme-challenge.'+domain,zone))
-            update = dns.update.Update(zone, keyring=dns_zone_keyring, keyalgorithm=dns_update_algo)
-            update.delete('_acme-challenge.'+domain+'.', 'TXT')
-            response = dns.query.tcp(update, dns_zone_update_server, timeout=10)
+    if pending:
+        if not dns_zone_update_server:
+            log.debug("You can now remove the _acme-challenge records from your DNS zone.")
+        else:
+            log.debug('Removing DNS records added for ACME challange...')
+            for authz in pending:
+                auth_url, authorization, challenge, domain, keyauthorization, rdomain, record, token, zone = authz
+                log.debug('Removing TXT record {0} in DNS zone {1}'.format('_acme-challenge.'+domain,zone))
+                update = dns.update.Update(zone, keyring=dns_zone_keyring, keyalgorithm=dns_update_algo)
+                update.delete('_acme-challenge.'+domain+'.', 'TXT')
+                response = dns.query.tcp(update, dns_zone_update_server, timeout=10)
 
     return certificate_pem
 
