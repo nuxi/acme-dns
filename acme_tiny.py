@@ -5,6 +5,7 @@ from __future__ import print_function
 import argparse, subprocess, json, os, sys, base64, binascii, time, hashlib, re, copy, textwrap, logging
 
 import pprint
+import six
 import socket
 import traceback
 
@@ -14,10 +15,7 @@ import dns.resolver
 import dns.update
 import dns.tsigkeyring
 
-try:
-    from urllib.request import urlopen, Request # Python 3
-except ImportError:
-    from urllib2 import urlopen, Request # Python 2
+from six.moves.urllib.request import urlopen, Request
 
 TEST_CA = "https://acme-staging-v02.api.letsencrypt.org/directory"
 PROD_CA = "https://acme-v02.api.letsencrypt.org/directory"
@@ -161,10 +159,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
     if pending:
         if not dns_zone_update_server:
             log.info('Press enter to continue after updating DNS server')
-            try:
-                raw_input() # Python 2
-            except NameError:
-                input() # Python 3
+            six.moves.input()
         else:
             log.debug('Performing DNS Zone Updates...')
             for authz in pending:
