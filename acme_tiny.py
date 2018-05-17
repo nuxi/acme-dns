@@ -45,13 +45,14 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
         try:
             resp = urlopen(Request(url, data=data, headers={"Content-Type": "application/jose+json", "User-Agent": "acme-tiny"}))
             resp_data, code, headers = resp.read().decode("utf8"), resp.getcode(), resp.headers
-            resp_data = json.loads(resp_data) # try to parse json results
-        except ValueError:
-            pass # ignore json parsing errors
         except IOError as e:
             resp_data = e.read().decode("utf8") if hasattr(e, "read") else str(e)
             code, headers = getattr(e, "code", None), {}
-        if depth < 100 and code == 400 and json.loads(resp_data)['type'] == "urn:ietf:params:acme:error:badNonce":
+        try:
+            resp_data = json.loads(resp_data) # try to parse json results
+        except ValueError:
+            pass # ignore json parsing errors
+        if depth < 100 and code == 400 and resp_data['type'] == "urn:ietf:params:acme:error:badNonce":
             raise IndexError(resp_data) # allow 100 retrys for bad nonces
         if code not in [200, 201, 204]:
             raise ValueError("{0}:\nUrl: {1}\nResponse Code: {2}\nResponse: {3}".format(err_msg, url, code, resp_data))
