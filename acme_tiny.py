@@ -224,7 +224,17 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
         raise ValueError("Order failed: {0}".format(order))
 
     # download the certificate
-    certificate_pem, _, _ = _do_request(order['certificate'], err_msg="Certificate download failed")
+    certificate_pem, _, cert_headers = _do_request(order['certificate'], err_msg="Certificate download failed")
+    if cert_headers['Content-Type'] != "application/pem-certificate-chain":
+        raise ValueError("Certifice received in unknown format: {0}".format(cert_headers['Content-Type']))
+
+    # the spec recommends making sure that other types of PEM blocks don't exist in the response
+    prefix = "-----BEGIN "
+    suffix = "CERTIFICATE-----"
+    for line in certificate_pem.splitlines():
+        if line.startswith(prefix) and not line.endswith(suffix):
+            raise ValueError("Unexpected PEM header in certificate: {0}".format(line))
+
     log.info("Certificate signed!")
 
     if pending:
