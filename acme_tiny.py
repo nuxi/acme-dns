@@ -219,7 +219,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
     _send_signed_request(order['finalize'], {"csr": _b64(csr_der)}, "Error finalizing order")
 
     # poll the order to monitor when it's done
-    order = _poll_until_not(order_headers['Location'], ["pending", "processing"], "Error checking order status")
+    order = _poll_until_not(order_headers['Location'], ["pending", "ready", "processing"], "Error checking order status")
     if order['status'] != "valid":
         raise ValueError("Order failed: {0}".format(order))
 
