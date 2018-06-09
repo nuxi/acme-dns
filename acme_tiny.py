@@ -43,7 +43,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
     # helper function - make request and automatically parse json response
     def _do_request(url, data=None, err_msg="Error", depth=0):
         try:
-            resp = urlopen(Request(url, data=data, headers={"Content-Type": "application/jose+json", "User-Agent": "acme-tiny"}))
+            resp = urlopen(Request(url, data=data, headers={"Content-Type": "application/jose+json", "User-Agent": "acme-tiny-dns"}))
             resp_data, code, headers = resp.read().decode("utf8"), resp.getcode(), resp.headers
         except IOError as e:
             resp_data = e.read().decode("utf8") if hasattr(e, "read") else str(e)
