@@ -269,6 +269,7 @@ def main(argv=None):
     parser.add_argument("--csr", required=True, help="path to your certificate signing request")
     parser.add_argument("--quiet", action="store_const", const=logging.ERROR, help="suppress output except for errors")
     parser.add_argument("--skip", action="store_true", help="skip checking for DNS records")
+    parser.add_argument("--no-chain", action="store_true", help="Do not print the intermediate certificates")
     parser.add_argument("--ca", default=PROD_CA, help="certificate authority, default is Let's Encrypt Production")
     parser.add_argument("--contact", help="an optional email address to receive expiration alerts from Let's Encrypt")
     parser.add_argument("--dns-zone-update", metavar='DNS_SERVER', help="optionally automatically provision TXT record for challange on the DNS Server specified by this option using DNS zone updates")
@@ -304,7 +305,12 @@ def main(argv=None):
     signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=ca, contact=args.contact,
                          dns_zone_update_server=args.dns_zone_update, dns_zone_keyring=dns_zone_keyring, dns_zone=args.dns_zone,
                          dns_update_algo=dns_update_algo)
-    sys.stdout.write(signed_crt)
+
+    end = "-----END CERTIFICATE-----"
+    for line in signed_crt.splitlines():
+        sys.stdout.write('{0}\n'.format(line))
+        if args.no_chain and line == end:
+            break
 
 if __name__ == "__main__": # pragma: no cover
     main(sys.argv[1:])
