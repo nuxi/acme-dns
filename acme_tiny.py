@@ -201,16 +201,19 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
 
         # say the challenge is done
         _send_signed_request(challenge['url'], {}, "Error submitting challenges: {0}".format(rdomain))
-        challenge = _poll_until_not(challenge['url'], ["pending", "processing"], "Error checking challenge status for {0}".format(rdomain))
-        if challenge['status'] != "valid":
-            if 'error' in challenge:
-                raise ValueError("Challenge failed (status: {0}) for {1}:\n{2}".format(challenge['status'], rdomain, pprint.pformat(challenge['error'])))
-            else:
-                raise ValueError("Challenge failed (status: {0}) for {1}: Unknown reasons".format(challenge['status'], rdomain))
 
-        authorization = _poll_until_not(auth_url, ["pending"], "Error checking challenge status for {0}".format(rdomain))
+        # skip checking challenge state because it won't change if another challenge for this authorization has completed
+        authorization = _poll_until_not(auth_url, ["pending"], "Error checking authorization status for {0}".format(rdomain))
         if authorization['status'] != "valid":
-            raise ValueError('Authorization for {0} failed: {1}'.format(rdomain, authorization))
+            errors = [c for c in authorization['challenges'] if c['status'] not in ('valid', 'pending') and 'error' in c]
+            dns = [c for c in errors if c['type'] == 'dns-01']
+
+            reason = dns[0] if dns else errors[0] if errors else None
+            if reason is not None:
+                raise ValueError("Challenge {0} failed (status: {1}) for {2}:\n{3}".format(reason['type'], reason['status'], rdomain,
+                                 pprint.pformat(reason['error'])))
+            else:
+                raise ValueError("Authorization failed for {0}:\n{1}".format(rdomain, pprint.pformat(authorization)))
         log.info("{0} verified!".format(domain))
 
     # finalize the order with the csr
