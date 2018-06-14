@@ -10,7 +10,11 @@ import socket
 import traceback
 
 import dns.message
+import dns.name
 import dns.query
+import dns.rcode
+import dns.rdataclass
+import dns.rdatatype
 import dns.resolver
 import dns.update
 import dns.tsigkeyring
@@ -183,14 +187,19 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
         log.info("Verifying {0} part 2...".format(rdomain))
 
         if not skip_check:
-            # check that the file is in place
+            # check that the DNS record is in place
             addr = set()
             for x in dns.resolver.query(dns.resolver.zone_for_name(domain), 'NS'):
                 addr = addr.union(map(str, dns.resolver.query(str(x), 'A', raise_on_no_answer=False)))
                 addr = addr.union(map(str, dns.resolver.query(str(x), 'AAAA', raise_on_no_answer=False)))
 
+            if not addr:
+                raise ValueError("No DNS server for {0} was found".format(domain))
+
+            qname = '_acme-challenge.{0}'.format(domain)
+            valid = []
             for x in addr:
-                req = dns.message.make_query('_acme-challenge.%s' % domain, 'TXT')
+                req = dns.message.make_query(qname, 'TXT')
                 try:
                     resp = dns.query.udp(req, x, timeout=30)
                 except socket.error as e:
@@ -198,10 +207,22 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
                 except dns.exception.DNSException as e:
                     log.warn('Exception contacting {0}: {1}'.format(x, e))
                 else:
-                    for y in resp.answer:
-                        txt = map(lambda x: str(x)[1:-1], y)
-                        if record not in txt:
-                            raise ValueError("_acme-challenge.{0} does not contain {1} on nameserver {2}".format(domain, record, x))
+                    if resp.rcode() != dns.rcode.NOERROR:
+                        raise ValueError("Query for {0} returned {1} on nameserver {2}".format(qname, dns.rcode.to_text(resp.rcode()), x))
+                    else:
+                        answer = resp.get_rrset(resp.answer, dns.name.from_text("{0}.".format(qname.rstrip(".")), None),
+                                                dns.rdataclass.IN, dns.rdatatype.TXT)
+                        if answer:
+                            txt = list(map(lambda x: str(x)[1:-1], answer))
+                            if record not in txt:
+                                raise ValueError("{0} does not contain {1} on nameserver {2}".format(qname, record, x))
+                            else:
+                                valid.append(x)
+                        else:
+                            raise ValueError("Query for {0} returned an empty answer set on nameserver {1}".format(qname, x))
+
+            if not valid:
+                raise ValueError("No DNS server for {0} was reachable".format(qname))
 
         # say the challenge is done
         _send_signed_request(challenge['url'], {}, "Error submitting challenges: {0}".format(rdomain))
