@@ -75,10 +75,10 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
 
     # helper function - poll until complete
     def _poll_until_not(url, pending_statuses, err_msg, timeout=90):
-        timeout = time.time() + timeout
+        deadline = time.time() + timeout
         while True:
             result, _, _ = _do_request(url, err_msg=err_msg)
-            if time.time() < timeout and result['status'] in pending_statuses:
+            if time.time() < deadline and result['status'] in pending_statuses:
                 time.sleep(2)
                 continue
             return result
