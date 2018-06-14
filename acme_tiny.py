@@ -142,6 +142,9 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
         if authorization['status'] == 'valid':
             log.info('Existing authorization for {0} is still valid!'.format(rdomain))
             continue
+        types = [c['type'] for c in authorization['challenges']]
+        if 'dns-01' not in types:
+            raise IndexError('Challenge dns-01 is not allowed for {0}. Permitted challenges are: {1}'.format(rdomain, ', '.join(types)))
         log.info("Verifying {0} part 1...".format(rdomain))
 
         # find the dns-01 challenge and write the challenge file
