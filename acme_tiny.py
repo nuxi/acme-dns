@@ -74,10 +74,11 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
             return _send_signed_request(url, payload, err_msg, depth=(depth + 1))
 
     # helper function - poll until complete
-    def _poll_until_not(url, pending_statuses, err_msg):
+    def _poll_until_not(url, pending_statuses, err_msg, timeout=90):
+        timeout = time.time() + timeout
         while True:
             result, _, _ = _do_request(url, err_msg=err_msg)
-            if result['status'] in pending_statuses:
+            if time.time() < timeout and result['status'] in pending_statuses:
                 time.sleep(2)
                 continue
             return result
