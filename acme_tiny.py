@@ -209,9 +209,9 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
         authorization = _poll_until_not(auth_url, ["pending"], "Error checking authorization status for {0}".format(rdomain))
         if authorization['status'] != "valid":
             errors = [c for c in authorization['challenges'] if c['status'] not in ('valid', 'pending') and 'error' in c]
-            dns = [c for c in errors if c['type'] == 'dns-01']
+            dns_error = [c for c in errors if c['type'] == 'dns-01']
 
-            reason = dns[0] if dns else errors[0] if errors else None
+            reason = dns_error[0] if dns_error else errors[0] if errors else None
             if reason is not None:
                 raise ValueError("Challenge {0} failed (status: {1}) for {2}:\n{3}".format(reason['type'], reason['status'], rdomain,
                                  pprint.pformat(reason['error'])))
