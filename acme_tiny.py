@@ -241,13 +241,18 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
                 raise ValueError("Authorization failed for {0}:\n{1}".format(rdomain, pprint.pformat(authorization)))
         log.info("{0} verified!".format(domain))
 
+    # poll the order to monitor when it's ready
+    order = _poll_until_not(order_headers['Location'], ["pending"], "Error checking order status")
+    if order['status'] != "ready":
+        raise ValueError("Order failed: {0}".format(order))
+
     # finalize the order with the csr
     log.info("Signing certificate...")
     csr_der = _cmd(["openssl", "req", "-in", csr, "-outform", "DER"], err_msg="DER Export Error")
     _send_signed_request(order['finalize'], {"csr": _b64(csr_der)}, "Error finalizing order")
 
     # poll the order to monitor when it's done
-    order = _poll_until_not(order_headers['Location'], ["pending", "ready", "processing"], "Error checking order status")
+    order = _poll_until_not(order_headers['Location'], ["ready", "processing"], "Error checking order status")
     if order['status'] != "valid":
         raise ValueError("Order failed: {0}".format(order))
 
