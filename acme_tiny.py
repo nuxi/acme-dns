@@ -30,7 +30,7 @@ LOGGER.setLevel(logging.INFO)
 
 def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=None,
             dns_zone_update_server=None, dns_zone_keyring=None, dns_zone=None, dns_update_algo=None):
-    directory, acct_headers, alg, jwk = None, None, None, None # global variables
+    directory, acct_headers, alg, jwk, nonce = None, None, None, None, [None] # global variables
 
     # helper functions - base64 encode for jose spec
     def _b64(b):
@@ -52,6 +52,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
         except IOError as e:
             resp_data = e.read().decode("utf8") if hasattr(e, "read") else str(e)
             code, headers = getattr(e, "code", None), {}
+        nonce[0] = headers.get('Replay-Nonce', None)
         try:
             resp_data = json.loads(resp_data) # try to parse json results
         except ValueError:
@@ -65,8 +66,9 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
     # helper function - make signed requests
     def _send_signed_request(url, payload=None, err_msg="Error", depth=0):
         payload64 = _b64(json.dumps(payload).encode('utf8')) if payload is not None else ""
-        new_nonce = _do_request(directory['newNonce'])[2]['Replay-Nonce']
-        protected = {"url": url, "alg": alg, "nonce": new_nonce}
+        if nonce[0] is None:
+            _do_request(directory['newNonce'])
+        protected = {"url": url, "alg": alg, "nonce": nonce[0]}
         protected.update({"jwk": jwk} if acct_headers is None else {"kid": acct_headers['Location']})
         protected64 = _b64(json.dumps(protected).encode('utf8'))
         protected_input = "{0}.{1}".format(protected64, payload64).encode('utf8')
