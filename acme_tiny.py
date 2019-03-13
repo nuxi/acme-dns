@@ -63,8 +63,8 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
         return resp_data, code, headers
 
     # helper function - make signed requests
-    def _send_signed_request(url, payload, err_msg, depth=0):
-        payload64 = _b64(json.dumps(payload).encode('utf8'))
+    def _send_signed_request(url, payload=None, err_msg="Error", depth=0):
+        payload64 = _b64(json.dumps(payload).encode('utf8')) if payload is not None else ""
         new_nonce = _do_request(directory['newNonce'])[2]['Replay-Nonce']
         protected = {"url": url, "alg": alg, "nonce": new_nonce}
         protected.update({"jwk": jwk} if acct_headers is None else {"kid": acct_headers['Location']})
@@ -78,10 +78,10 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
             return _send_signed_request(url, payload, err_msg, depth=(depth + 1))
 
     # helper function - poll until complete
-    def _poll_until_not(url, pending_statuses, err_msg, timeout=90):
+    def _poll_until_not(url, pending_statuses, err_msg="Error", timeout=90):
         deadline = time.time() + timeout
         while True:
-            result, _, _ = _do_request(url, err_msg=err_msg)
+            result, _, _ = _send_signed_request(url, err_msg=err_msg)
             if time.time() < deadline and result['status'] in pending_statuses:
                 time.sleep(2)
                 continue
@@ -141,7 +141,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
 
     # get the authorizations that need to be completed
     for auth_url in order['authorizations']:
-        authorization, _, _ = _do_request(auth_url, err_msg="Error getting challenges")
+        authorization, _, _ = _send_signed_request(auth_url, err_msg="Error getting challenges")
         domain = authorization['identifier']['value']
         rdomain = '*.{0}'.format(domain) if authorization.get('wildcard', False) else domain
         if authorization['status'] == 'valid':
@@ -257,7 +257,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
         raise ValueError("Order failed: {0}".format(order))
 
     # download the certificate
-    certificate_pem, _, cert_headers = _do_request(order['certificate'], err_msg="Certificate download failed")
+    certificate_pem, _, cert_headers = _send_signed_request(order['certificate'], err_msg="Certificate download failed")
     if cert_headers['Content-Type'] != "application/pem-certificate-chain":
         raise ValueError("Certifice received in unknown format: {0}".format(cert_headers['Content-Type']))
 
