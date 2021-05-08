@@ -24,11 +24,15 @@ from six.moves.urllib.request import urlopen, Request
 TEST_CA = "https://acme-staging-v02.api.letsencrypt.org/directory"
 PROD_CA = "https://acme-v02.api.letsencrypt.org/directory"
 
+# weeee magic numbers!
+LE_SHORT_CHAIN = "0"
+LE_LONG_CHAIN = "1"
+
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
-def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=None,
+def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=None, contact=None,
             dns_zone_update_server=None, dns_zone_keyring=None, dns_zone=None, dns_update_algo=None):
     directory, acct_headers, alg, jwk, nonce = None, None, None, None, [None] # global variables
 
@@ -259,7 +263,8 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, contact=
         raise ValueError("Order failed: {0}".format(order))
 
     # download the certificate
-    certificate_pem, _, cert_headers = _send_signed_request(order['certificate'], err_msg="Certificate download failed")
+    cert_url = "{}/{}".format(order['certificate'], chain) if chain is not None else order['certificate']
+    certificate_pem, _, cert_headers = _send_signed_request(cert_url, err_msg="Certificate download failed")
     if cert_headers['Content-Type'] != "application/pem-certificate-chain":
         raise ValueError("Certifice received in unknown format: {0}".format(cert_headers['Content-Type']))
 
@@ -306,6 +311,7 @@ def main(argv=None):
     parser.add_argument("--skip", action="store_true", help="skip checking for DNS records")
     parser.add_argument("--disable-check", dest='skip', action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--no-chain", action="store_true", help="Do not print the intermediate certificates")
+    parser.add_argument("--chain", default=None, help="Select certificate chain ('short' or 'long')")
     parser.add_argument("--ca", default=PROD_CA, help="certificate authority, default is Let's Encrypt Production")
     parser.add_argument("--directory-url", dest='ca', help=argparse.SUPPRESS)
     parser.add_argument("--contact", help="an optional email address to receive expiration alerts from Let's Encrypt")
@@ -316,37 +322,56 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if not args.dns_zone_update and (args.dns_zone_key or args.dns_zone):
-      ArgumentParser.error("--dns-zone and --dns-zone-key can only be used together with --dns-zone-update")
+        parser.error("--dns-zone and --dns-zone-key can only be used together with --dns-zone-update")
 
     dns_update_algo = None
     dns_zone_keyring = None
     if args.dns_zone_key:
-      dns_zone_keyring = dns.tsigkeyring.from_text({args.dns_zone_key[0]:args.dns_zone_key[1]})
-      dns_update_algo = args.dns_zone_key[2]
+        dns_zone_keyring = dns.tsigkeyring.from_text({args.dns_zone_key[0]:args.dns_zone_key[1]})
+        dns_update_algo = args.dns_zone_key[2]
 
     if args.dns_zone and args.dns_zone.isdigit():
-      args.dns_zone = int(args.dns_zone)
+        args.dns_zone = int(args.dns_zone)
 
     LOGGER.setLevel(args.quiet or LOGGER.level)
 
     if args.ca.upper() in ('PRODUCTION', 'PROD', 'DEFAULT') or args.ca == PROD_CA:
         ca = PROD_CA
         LOGGER.info("Using Let's Encrypt production CA: {0}".format(ca))
-    elif args.ca.upper() in ('TEST', 'STAGING', 'DEVEL') or args.ca == TEST_CA:
+    elif args.ca.upper() in ('TEST', 'STAGING', 'DEVEL', 'DEV') or args.ca == TEST_CA:
         ca = TEST_CA
         LOGGER.info("Using Let's Encrypt staging CA: {0}".format(ca))
     else:
         ca = args.ca
         LOGGER.info("Using other CA: {0}".format(ca))
 
-    signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=ca, contact=args.contact,
+    no_chain = args.no_chain
+    chain = None
+    if ca in (PROD_CA, TEST_CA):
+        if args.chain is not None:
+            if args.chain.upper() in ('SHORT', 'ISRG'):
+                chain = LE_LONG_CHAIN
+                LOGGER.info("Forcing Let's Encrypt short chain (ISRG root)")
+            elif args.chain.upper() in ('LONG', 'DST'):
+                chain = LE_SHORT_CHAIN
+                LOGGER.info("Forcing Let's Encrypt long chain (DST root)")
+            elif args.chain.upper() in ('NONE', 'NO'):
+                no_chain = True
+                pass
+            else:
+                parser.error("Invalid Let's Encrypt chain specified: {0}".format(args.chain))
+    else:
+        chain = args.chain
+        LOGGER.info("Using alternate chain: {0}".format(chain))
+
+    signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=ca, chain=chain, contact=args.contact,
                          dns_zone_update_server=args.dns_zone_update, dns_zone_keyring=dns_zone_keyring, dns_zone=args.dns_zone,
                          dns_update_algo=dns_update_algo)
 
     end = "-----END CERTIFICATE-----"
     for line in signed_crt.splitlines():
         sys.stdout.write('{0}\n'.format(line))
-        if args.no_chain and line == end:
+        if no_chain and line == end:
             break
 
 if __name__ == "__main__": # pragma: no cover
