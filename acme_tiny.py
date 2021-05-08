@@ -359,7 +359,12 @@ def main(argv=None):
                 no_chain = True
                 pass
             else:
-                parser.error("Invalid Let's Encrypt chain specified: {0}".format(args.chain))
+                try:
+                    int(args.chain)
+                except ValueError:
+                    parser.error("Invalid Let's Encrypt chain specified: {0}".format(args.chain))
+                chain = args.chain
+                LOGGER.info("Using alternate chain: {0}".format(chain))
     else:
         chain = args.chain
         LOGGER.info("Using alternate chain: {0}".format(chain))
