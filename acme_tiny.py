@@ -350,10 +350,10 @@ def main(argv=None):
     if ca in (PROD_CA, TEST_CA):
         if args.chain is not None:
             if args.chain.upper() in ('SHORT', 'ISRG'):
-                chain = LE_LONG_CHAIN
+                chain = LE_SHORT_CHAIN
                 LOGGER.info("Forcing Let's Encrypt short chain (ISRG root)")
             elif args.chain.upper() in ('LONG', 'DST'):
-                chain = LE_SHORT_CHAIN
+                chain = LE_LONG_CHAIN
                 LOGGER.info("Forcing Let's Encrypt long chain (DST root)")
             elif args.chain.upper() in ('NONE', 'NO'):
                 no_chain = True
