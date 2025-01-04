@@ -7,6 +7,7 @@ import argparse, subprocess, json, os, sys, base64, binascii, time, hashlib, re,
 import pprint
 import six
 import socket
+import time
 import traceback
 
 import dns.message
@@ -192,6 +193,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
                 response = dns.query.tcp(update, server, timeout=10)
                 if response.rcode() != 0:
                     raise Exception("DNS zone update failed, aborting, query was: {0}".format(response))
+            time.sleep(7)
 
     # verify each domain
     for authz in pending:
