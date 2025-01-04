@@ -201,8 +201,14 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
 
         if not skip_check:
             # check that the DNS record is in place
+            zone = dns.resolver.zone_for_name(domain, resolver=resolver)
+
+            master = set()
+            for family in resolver.resolve_name(resolver.resolve(zone, 'SOA')[0].mname).values():
+                master = master.union(map(str, family))
+
             addr = set()
-            for x in resolver.resolve(dns.resolver.zone_for_name(domain, resolver=resolver), 'NS'):
+            for x in resolver.resolve(zone, 'NS'):
                 addr = addr.union(map(str, resolver.resolve(str(x), 'A', raise_on_no_answer=False)))
                 addr = addr.union(map(str, resolver.resolve(str(x), 'AAAA', raise_on_no_answer=False)))
 
@@ -212,27 +218,37 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
             qname = '_acme-challenge.{0}'.format(domain)
             valid = []
             for x in addr:
+                errmsg = None
                 req = dns.message.make_query(qname, 'TXT')
                 try:
                     resp = dns.query.udp(req, x, timeout=30)
                 except socket.error as e:
-                    log.warn('Exception contacting {0}: {1}'.format(x, e))
+                    errmsg = 'Exception contacting {0}: {1}'.format(x, e)
                 except dns.exception.DNSException as e:
-                    log.warn('Exception contacting {0}: {1}'.format(x, e))
+                    errmsg = 'Exception contacting {0}: {1}'.format(x, e)
                 else:
                     if resp.rcode() != dns.rcode.NOERROR:
-                        raise ValueError("Query for {0} returned {1} on nameserver {2}".format(qname, dns.rcode.to_text(resp.rcode()), x))
+                        errmsg = "Query for {0} returned {1} on nameserver {2}".format(qname, dns.rcode.to_text(resp.rcode()), x)
                     else:
                         answer = resp.get_rrset(resp.answer, dns.name.from_text("{0}.".format(qname.rstrip(".")), None),
                                                 dns.rdataclass.IN, dns.rdatatype.TXT)
                         if answer:
                             txt = list(map(lambda x: str(x)[1:-1], answer))
                             if record not in txt:
-                                raise ValueError("{0} does not contain {1} on nameserver {2}".format(qname, record, x))
+                                errmsg = "{0} does not contain {1} on nameserver {2}".format(qname, record, x)
                             else:
                                 valid.append(x)
                         else:
-                            raise ValueError("Query for {0} returned an empty answer set on nameserver {1}".format(qname, x))
+                            errmsg = "Query for {0} returned an empty answer set on nameserver {1}".format(qname, x)
+
+                if errmsg is not None:
+                    # If the DNS resolver is overriden then there is a good chance that not all the servers
+                    # can be reached. So when the resolver is overriden, only treat errors communicating with
+                    # the master as errors.
+                    if dns_server is None or x in master:
+                        raise ValueError(errmsg)
+                    else:
+                        log.warning(errmsg)
 
             if not valid:
                 raise ValueError("No DNS server for {0} was reachable".format(qname))
