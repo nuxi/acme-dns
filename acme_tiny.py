@@ -33,8 +33,14 @@ LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
 def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=None, contact=None,
-            dns_server=None, ddns_keyring=None, dns_zone=None, ddns_algo=None):
+            dns_server=None, ddns_keyring=None, ddns_algo=None):
     directory, acct_headers, alg, jwk, nonce = None, None, None, None, [None] # global variables
+
+    if dns_server:
+        resolver = dns.resolver.Resolver(configure=False)
+        resolver.nameservers = dns_server.split(',')
+    else:
+        resolver = dns.resolver.get_default_resolver()
 
     # helper functions - base64 encode for jose spec
     def _b64(b):
@@ -174,12 +180,12 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
             log.debug('Performing DNS Zone Updates...')
             for authz in pending:
                 auth_url, authorization, challenge, domain, keyauthorization, rdomain, record, token = authz
-                zone = str(dns.resolver.zone_for_name('_acme-challenge.{0}'.format(domain)))
-                master = str(dns.resolver.resolve(zone, 'SOA')[0].mname)
+                zone = str(dns.resolver.zone_for_name('_acme-challenge.{0}'.format(domain), resolver=resolver))
+                master = str(resolver.resolve(zone, 'SOA')[0].mname)
                 try:
-                    server = str(dns.resolver.resolve(master, 'A')[0].address)
+                    server = str(resolver.resolve(master, 'A')[0].address)
                 except dns.resolver.NoAnswer:
-                    server = str(dns.resolver.resolve(master, 'AAAA')[0].address)
+                    server = str(resolver.resolve(master, 'AAAA')[0].address)
                 log.debug('Updating TXT record _acme-challenge.{0} in DNS zone {1} on {2}'.format(domain, zone, master))
                 update = dns.update.Update(zone, keyring=ddns_keyring, keyalgorithm=ddns_algo)
                 update.replace('_acme-challenge.{0}.'.format(domain), 60, 'TXT', str(record))
@@ -196,9 +202,9 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
         if not skip_check:
             # check that the DNS record is in place
             addr = set()
-            for x in dns.resolver.resolve(dns.resolver.zone_for_name(domain), 'NS'):
-                addr = addr.union(map(str, dns.resolver.resolve(str(x), 'A', raise_on_no_answer=False)))
-                addr = addr.union(map(str, dns.resolver.resolve(str(x), 'AAAA', raise_on_no_answer=False)))
+            for x in resolver.resolve(dns.resolver.zone_for_name(domain, resolver=resolver), 'NS'):
+                addr = addr.union(map(str, resolver.resolve(str(x), 'A', raise_on_no_answer=False)))
+                addr = addr.union(map(str, resolver.resolve(str(x), 'AAAA', raise_on_no_answer=False)))
 
             if not addr:
                 raise ValueError("No DNS server for {0} was found".format(domain))
@@ -285,12 +291,12 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
             log.debug('Removing DNS records added for ACME challange...')
             for authz in pending:
                 auth_url, authorization, challenge, domain, keyauthorization, rdomain, record, token = authz
-                zone = str(dns.resolver.zone_for_name('_acme-challenge.{0}'.format(domain)))
-                master = str(dns.resolver.resolve(zone, 'SOA')[0].mname)
+                zone = str(dns.resolver.zone_for_name('_acme-challenge.{0}'.format(domain), resolver=resolver))
+                master = str(resolver.resolve(zone, 'SOA')[0].mname)
                 try:
-                    server = str(dns.resolver.resolve(master, 'A')[0].address)
+                    server = str(resolver.resolve(master, 'A')[0].address)
                 except dns.resolver.NoAnswer:
-                    server = str(dns.resolver.resolve(master, 'AAAA')[0].address)
+                    server = str(resolver.resolve(master, 'AAAA')[0].address)
                 log.debug('Updating TXT record _acme-challenge.{0} in DNS zone {1} on {2}'.format(domain, zone, master))
                 update = dns.update.Update(zone, keyring=ddns_keyring, keyalgorithm=ddns_algo)
                 update.delete('_acme-challenge.{0}.'.format(domain), 'TXT')
@@ -322,6 +328,7 @@ def main(argv=None):
     parser.add_argument("--ca", default=PROD_CA, help="certificate authority, default is Let's Encrypt Production")
     parser.add_argument("--directory-url", dest='ca', help=argparse.SUPPRESS)
     parser.add_argument("--contact", help="an optional email address to receive expiration alerts from Let's Encrypt")
+    parser.add_argument("--dns-server", metavar='DNS_SERVER', help="optional. Recursive DNS server to use. Which can be needed when there is a different internal DNS view.")
     parser.add_argument("--ddns-key", nargs=3, metavar=('KEY_NAME','SECRET','ALGORITHM'), help="optional. The key name, secret and algorithm for the TSIG key which may be used to authenticate the DNS zone updates")
 
     args = parser.parse_args(argv)
@@ -369,7 +376,7 @@ def main(argv=None):
         LOGGER.info("Using alternate chain: {0}".format(chain))
 
     signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=ca, chain=chain, contact=args.contact,
-                         ddns_keyring=ddns_keyring, ddns_algo=ddns_algo)
+                         dns_server=args.dns_server, ddns_keyring=ddns_keyring, ddns_algo=ddns_algo)
 
     end = "-----END CERTIFICATE-----"
     for line in signed_crt.splitlines():
