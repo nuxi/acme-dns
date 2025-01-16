@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-# Copyright Daniel Roesler, under MIT license, see LICENSE at github.com/diafygi/acme-tiny
+# The original acme-tiny code is Copyright Daniel Roesler under MIT license.
+# see LICENSE at github.com/diafygi/acme-tiny
+# The acme-dns modifications are Copyright Jon DeVree under MIT license.
+# see LICENSE at github.com/nuxi/acme-tiny
+
 from __future__ import print_function
 
 import argparse, subprocess, json, os, sys, base64, binascii, time, hashlib, re, copy, textwrap, logging
@@ -328,12 +332,12 @@ def main(argv=None):
         description=textwrap.dedent("""\
             This script automates the process of getting a signed TLS certificate from Let's Encrypt using
             the ACME protocol. It will need to be run on your server and have access to your private
-            account key, so PLEASE READ THROUGH IT! It's only ~300 lines, so it won't take long.
+            account key, so PLEASE READ THROUGH IT!
 
             This version has been modified from the original to use DNS challenge instead of HTTP
 
             Example Usage:
-            python acme_tiny.py --account-key ./account.key --csr ./domain.csr > signed_chain.crt
+            python acme_dns.py --account-key ./account.key --csr ./domain.csr > signed_chain.crt
             """)
     )
     parser.add_argument("--account-key", required=True, help="path to your Let's Encrypt account private key")

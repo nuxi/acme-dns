@@ -1,6 +1,7 @@
 The MIT License (MIT)
 
-Copyright (c) 2015 Daniel Roesler
+Copyright (c) 2015 Daniel Roesler (original acme-tiny)
+Copyright (c) 2016 Jon DeVree (acme-dns fork)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
