@@ -43,7 +43,7 @@ LOGGER.setLevel(logging.INFO)
 
 
 def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=None, contact=None,
-            dns_server=None, ddns_keyring=None, ddns_algo=None):
+            profile=None, dns_server=None, ddns_keyring=None, ddns_algo=None):
     directory, acct_headers, alg, jwk, nonce = None, None, None, None, [None]  # global variables
 
     if dns_server:
@@ -156,6 +156,14 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
     directory, _, _ = _do_request(CA, err_msg="Error getting directory")
     log.info("Directory found!")
 
+    if profile is not None:
+        supported = directory.get('meta', {}).get('profiles', {})
+        if profile not in supported:
+            log.error("Profile '{0}' not found in directory. Supported profiles: {1}"
+                      .format(profile, ', '.join(supported.keys())))
+            return None
+        log.info("Using profile: {0}".format(profile))
+
     # create account, update contact details (if any), and set the global key identifier
     log.info("Registering account...")
     reg_payload = {"termsOfServiceAgreed": True}
@@ -173,6 +181,8 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
     # create a new order
     log.info("Creating new order...")
     order_payload = {"identifiers": [{"type": "dns", "value": d} for d in domains]}
+    if profile is not None:
+        order_payload["profile"] = profile
     order, _, order_headers = _send_signed_request(directory['newOrder'], order_payload,
                                                    "Error creating new order")
     log.info("Order created!")
@@ -406,6 +416,8 @@ def main(argv=None):
                         help="Do not print the intermediate certificates")
     parser.add_argument("--chain", default=None,
                         help="Select certificate chain")
+    parser.add_argument("--profile", default=None,
+                        help="Select certificate profile")
     parser.add_argument("--ca", default=PROD_CA,
                         help="certificate authority, default is Let's Encrypt Production")
     parser.add_argument("--directory-url", dest='ca', help=argparse.SUPPRESS)
@@ -445,9 +457,13 @@ def main(argv=None):
         chain = args.chain
         LOGGER.info("Using alternate chain: {0}".format(chain))
 
-    signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=ca, chain=chain,
-                         contact=args.contact, dns_server=args.dns_server,
-                         ddns_keyring=ddns_keyring, ddns_algo=ddns_algo)
+    signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=ca,
+                         chain=chain, profile=args.profile, contact=args.contact,
+                         dns_server=args.dns_server, ddns_keyring=ddns_keyring,
+                         ddns_algo=ddns_algo)
+
+    if signed_crt is None:
+        sys.exit(1)
 
     end = "-----END CERTIFICATE-----"
     for line in signed_crt.splitlines():
