@@ -4,8 +4,6 @@
 # The acme-dns modifications are Copyright Jon DeVree under MIT license.
 # see LICENSE at github.com/nuxi/acme-tiny
 
-from __future__ import print_function
-
 import argparse
 import base64
 import binascii
