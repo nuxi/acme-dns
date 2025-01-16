@@ -29,10 +29,6 @@ from six.moves.urllib.request import urlopen, Request
 TEST_CA = "https://acme-staging-v02.api.letsencrypt.org/directory"
 PROD_CA = "https://acme-v02.api.letsencrypt.org/directory"
 
-# weeee magic numbers!
-LE_SHORT_CHAIN = "0"
-LE_LONG_CHAIN = "1"
-
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
@@ -346,7 +342,7 @@ def main(argv=None):
     parser.add_argument("--skip", action="store_true", help="skip checking for DNS records")
     parser.add_argument("--disable-check", dest='skip', action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--no-chain", action="store_true", help="Do not print the intermediate certificates")
-    parser.add_argument("--chain", default=None, help="Select certificate chain ('short' or 'long')")
+    parser.add_argument("--chain", default=None, help="Select certificate chain")
     parser.add_argument("--ca", default=PROD_CA, help="certificate authority, default is Let's Encrypt Production")
     parser.add_argument("--directory-url", dest='ca', help=argparse.SUPPRESS)
     parser.add_argument("--contact", help="an optional email address to receive expiration alerts from Let's Encrypt")
@@ -375,25 +371,7 @@ def main(argv=None):
 
     no_chain = args.no_chain
     chain = None
-    if ca in (PROD_CA, TEST_CA):
-        if args.chain is not None:
-            if args.chain.upper() in ('SHORT', 'ISRG'):
-                chain = LE_SHORT_CHAIN
-                LOGGER.info("Forcing Let's Encrypt short chain (ISRG root)")
-            elif args.chain.upper() in ('LONG', 'DST'):
-                chain = LE_LONG_CHAIN
-                LOGGER.info("Forcing Let's Encrypt long chain (DST root)")
-            elif args.chain.upper() in ('NONE', 'NO'):
-                no_chain = True
-                pass
-            else:
-                try:
-                    int(args.chain)
-                except ValueError:
-                    parser.error("Invalid Let's Encrypt chain specified: {0}".format(args.chain))
-                chain = args.chain
-                LOGGER.info("Using alternate chain: {0}".format(chain))
-    else:
+    if args.chain is not None:
         chain = args.chain
         LOGGER.info("Using alternate chain: {0}".format(chain))
 
