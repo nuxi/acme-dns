@@ -6,13 +6,20 @@
 
 from __future__ import print_function
 
-import argparse, subprocess, json, os, sys, base64, binascii, time, hashlib, re, copy, textwrap, logging
-
+import argparse
+import base64
+import binascii
+import hashlib
+import json
+import logging
 import pprint
+import re
 import six
 import socket
+import subprocess
+import sys
+import textwrap
 import time
-import traceback
 
 import dns.message
 import dns.name
@@ -26,16 +33,19 @@ import dns.tsigkeyring
 
 from six.moves.urllib.request import urlopen, Request
 
+
 TEST_CA = "https://acme-staging-v02.api.letsencrypt.org/directory"
 PROD_CA = "https://acme-v02.api.letsencrypt.org/directory"
+
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
+
 def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=None, contact=None,
             dns_server=None, ddns_keyring=None, ddns_algo=None):
-    directory, acct_headers, alg, jwk, nonce = None, None, None, None, [None] # global variables
+    directory, acct_headers, alg, jwk, nonce = None, None, None, None, [None]  # global variables
 
     if dns_server:
         resolver = dns.resolver.Resolver(configure=False)
@@ -65,11 +75,11 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
             code, headers = getattr(e, "code", None), {}
         nonce[0] = headers.get('Replay-Nonce', None)
         try:
-            resp_data = json.loads(resp_data) # try to parse json results
+            resp_data = json.loads(resp_data)  # try to parse json results
         except ValueError:
-            pass # ignore json parsing errors
+            pass  # ignore json parsing errors
         if depth < 100 and code == 400 and resp_data['type'] == "urn:ietf:params:acme:error:badNonce":
-            raise IndexError(resp_data) # allow 100 retrys for bad nonces
+            raise IndexError(resp_data)  # allow 100 retrys for bad nonces
         if code not in [200, 201, 204]:
             raise ValueError("{0}:\nUrl: {1}\nResponse Code: {2}\nResponse: {3}".format(err_msg, url, code, resp_data))
         return resp_data, code, headers
@@ -87,7 +97,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
         data = json.dumps({"protected": protected64, "payload": payload64, "signature": _b64(out)})
         try:
             return _do_request(url, data=data.encode('utf8'), err_msg=err_msg, depth=depth)
-        except IndexError: # retry bad nonces (they raise IndexError)
+        except IndexError:  # retry bad nonces (they raise IndexError)
             return _send_signed_request(url, payload, err_msg, depth=(depth + 1))
 
     # helper function - poll until complete
@@ -104,7 +114,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
     log.info("Parsing account key...")
     out = _cmd(["openssl", "rsa", "-in", account_key, "-noout", "-text"], err_msg="OpenSSL Error")
     pub_pattern = r"modulus:\n\s+00:([a-f0-9\:\s]+?)\npublicExponent: ([0-9]+)"
-    pub_hex, pub_exp = re.search(pub_pattern, out.decode('utf8'), re.MULTILINE|re.DOTALL).groups()
+    pub_hex, pub_exp = re.search(pub_pattern, out.decode('utf8'), re.MULTILINE | re.DOTALL).groups()
     pub_exp = "{0:x}".format(int(pub_exp))
     pub_exp = "0{0}".format(pub_exp) if len(pub_exp) % 2 else pub_exp
     alg = "RS256"
@@ -123,7 +133,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
     common_name = re.search(r"Subject:.*? CN\s?=\s?([^\s,;/]+)", out.decode('utf8'))
     if common_name is not None:
         domains.add(common_name.group(1))
-    subject_alt_names = re.search(r"X509v3 Subject Alternative Name: \n +([^\n]+)\n", out.decode('utf8'), re.MULTILINE|re.DOTALL)
+    subject_alt_names = re.search(r"X509v3 Subject Alternative Name: \n +([^\n]+)\n", out.decode('utf8'), re.MULTILINE | re.DOTALL)
     if subject_alt_names is not None:
         for san in subject_alt_names.group(1).split(", "):
             if san.startswith("DNS:"):
@@ -322,6 +332,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
 
     return certificate_pem
 
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -347,14 +358,14 @@ def main(argv=None):
     parser.add_argument("--directory-url", dest='ca', help=argparse.SUPPRESS)
     parser.add_argument("--contact", help="an optional email address to receive expiration alerts from Let's Encrypt")
     parser.add_argument("--dns-server", metavar='DNS_SERVER', help="optional. Recursive DNS server to use. Which can be needed when there is a different internal DNS view.")
-    parser.add_argument("--ddns-key", nargs=3, metavar=('KEY_NAME','SECRET','ALGORITHM'), help="optional. The key name, secret and algorithm for the TSIG key which may be used to authenticate the DNS zone updates")
+    parser.add_argument("--ddns-key", nargs=3, metavar=('KEY_NAME', 'SECRET', 'ALGORITHM'), help="optional. The key name, secret and algorithm for the TSIG key which may be used to authenticate the DNS zone updates")
 
     args = parser.parse_args(argv)
 
     ddns_algo = None
     ddns_keyring = None
     if args.ddns_key:
-        ddns_keyring = dns.tsigkeyring.from_text({args.ddns_key[0]:args.ddns_key[1]})
+        ddns_keyring = dns.tsigkeyring.from_text({args.ddns_key[0]: args.ddns_key[1]})
         ddns_algo = args.ddns_key[2]
 
     LOGGER.setLevel(args.quiet or LOGGER.level)
@@ -384,5 +395,6 @@ def main(argv=None):
         if no_chain and line == end:
             break
 
-if __name__ == "__main__": # pragma: no cover
+
+if __name__ == "__main__":
     main(sys.argv[1:])
