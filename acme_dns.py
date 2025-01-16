@@ -14,7 +14,6 @@ import json
 import logging
 import pprint
 import re
-import six
 import socket
 import subprocess
 import sys
@@ -31,7 +30,7 @@ import dns.resolver
 import dns.update
 import dns.tsigkeyring
 
-from six.moves.urllib.request import urlopen, Request
+from urllib.request import urlopen, Request
 
 
 TEST_CA = "https://acme-staging-v02.api.letsencrypt.org/directory"
@@ -206,7 +205,7 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
     if pending:
         if not ddns_keyring:
             log.info('Press enter to continue after updating DNS server')
-            six.moves.input()
+            input()
         else:
             log.debug('Performing DNS Zone Updates...')
             for authz in pending:
