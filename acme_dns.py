@@ -41,7 +41,7 @@ LOGGER.setLevel(logging.INFO)
 
 
 def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=None, contact=None,
-            profile=None, dns_server=None, ddns_keyring=None, ddns_algo=None):
+            profile=None, dns_server=None, ddns_keyring=None, ddns_algo=None, dns_delay=None):
     directory, acct_headers, alg, jwk, nonce = None, None, None, None, [None]  # global variables
 
     if dns_server:
@@ -234,7 +234,13 @@ def get_crt(account_key, csr, skip_check=False, log=LOGGER, CA=PROD_CA, chain=No
                 if response.rcode() != 0:
                     raise Exception("DNS zone update failed, aborting, query was: {0}"
                                     .format(response))
-            time.sleep(7)
+
+            if dns_delay is not None:
+                # Putting a retry loop on the verification check would be better but
+                # that doesn't help when we can't actually query all of the zone's
+                # nameservers.
+                log.debug('Sleeping for {0} seconds due to DNS propogation delay...'.format(dns_delay))
+                time.sleep(dns_delay)
 
     # verify each domain
     for authz in pending:
@@ -428,6 +434,8 @@ def main(argv=None):
     parser.add_argument("--ddns-key", nargs=3, metavar=('KEY_NAME', 'SECRET', 'ALGORITHM'),
                         help="optional. The key name, secret and algorithm for the TSIG key "
                              "which may be used to authenticate the DNS zone updates")
+    parser.add_argument("--dns-delay", default=7, type=int,
+                        help="Delay after sending DDNS update (default: 7 seconds)")
 
     args = parser.parse_args(argv)
 
@@ -458,7 +466,7 @@ def main(argv=None):
     signed_crt = get_crt(args.account_key, args.csr, args.skip, log=LOGGER, CA=ca,
                          chain=chain, profile=args.profile, contact=args.contact,
                          dns_server=args.dns_server, ddns_keyring=ddns_keyring,
-                         ddns_algo=ddns_algo)
+                         ddns_algo=ddns_algo, dns_delay=args.dns_delay)
 
     if signed_crt is None:
         sys.exit(1)
